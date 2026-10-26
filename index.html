@@ -1,0 +1,432 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Spam Filtration — Analyzer</title>
+  <style>
+    :root{
+      --bg: linear-gradient(180deg,#071022 0%, #081427 60%);
+      --text-color: #e6eef8;
+      --card:#0b1220; --muted:#94a3b8; --accent:#6ee7b7; --danger:#ff6b6b; --glass: rgba(255,255,255,0.04);
+      --max-width:900px;
+      --radius:12px;
+      --gap:18px;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+    }
+    /* Light theme overrides */
+    html.theme-light {
+      --bg: linear-gradient(180deg,#ffffff 0%, #f8fafc 100%);
+      --card: #ffffff;
+      --muted: #475569;
+      --accent: #3b82f6;
+      --danger: #ef4444;
+      --glass: rgba(2,6,23,0.03);
+      --text-color: #0f1724;
+    }
+    /* body background & color now use --bg & --text-color */
+      /* tweak spinner and card borders for light theme */
+      --pre-bg: rgba(2,6,23,0.04);
+    }
+    html.theme-light .spinner{ border-top-color: #0f1724 !important; border-color: rgba(0,0,0,0.08) !important }
+    html.theme-light .card{ box-shadow:0 8px 30px rgba(2,6,23,0.06); border:1px solid rgba(2,6,23,0.03) }
+    html.theme-light .logo{ color: #fff; }
+    html.theme-light .explain pre{ color: #0f1724; background: rgba(226,232,240,0.65); }
+    *{box-sizing:border-box}
+    html,body{height:100%;margin:0;background:var(--bg);color:var(--text-color)}
+    .wrap{max-width:var(--max-width);margin:48px auto;padding:28px;}
+
+    .header{display:flex;align-items:center;gap:16px;margin-bottom:18px}
+    .logo{width:52px;height:52px;border-radius:10px;background:linear-gradient(135deg,var(--accent),#60a5fa);display:flex;align-items:center;justify-content:center;font-weight:700;color:#022;box-shadow:0 6px 18px rgba(0,0,0,0.6)}
+    h1{font-size:20px;margin:0}
+    p.lead{margin:0;color:var(--muted);font-size:13px}
+
+    .container{display:grid;grid-template-columns:1fr 360px;gap:var(--gap)}
+    @media (max-width:880px){.container{grid-template-columns:1fr}}
+
+    .card{background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));border-radius:var(--radius);padding:18px;box-shadow:0 8px 30px rgba(2,6,23,0.6);border:1px solid rgba(255,255,255,0.03)}
+
+    textarea#inputText{width:100%;min-height:240px;padding:14px;border-radius:10px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit;font-size:15px;resize:vertical}
+    .controls{display:flex;align-items:center;gap:12px;margin-top:12px}
+    .btn{background:linear-gradient(90deg, #3b82f6, #7c3aed);padding:10px 14px;border-radius:10px;border:none;color:white;font-weight:600;cursor:pointer;box-shadow:0 6px 18px rgba(59,130,246,0.18)}
+    .btn[disabled]{opacity:0.6;cursor:wait}
+
+    .small{font-size:13px;color:var(--muted)}
+
+    /* Result column */
+    .status-card{display:flex;flex-direction:column;gap:12px}
+    .result-big{display:flex;align-items:center;justify-content:space-between}
+    .label{font-weight:700;font-size:18px}
+    .badge{padding:6px 10px;border-radius:999px;background:var(--glass);font-weight:700}
+
+    .progress{background:rgba(255,255,255,0.04);height:14px;border-radius:8px;overflow:hidden}
+    .bar{height:100%;width:0%;transition:width 800ms cubic-bezier(.2,.9,.3,1)}
+    .bar.spam{background:linear-gradient(90deg,var(--danger),#ff9a9e)}
+    .bar.safe{background:linear-gradient(90deg,var(--accent),#7dd3fc)}
+    .bar.promo{background:linear-gradient(90deg,#f59e0b,#f97316)}
+
+    .explain{background:rgba(255,255,255,0.02);padding:12px;border-radius:10px;color:var(--muted);font-size:13px}
+
+    .meta{display:flex;gap:12px;flex-wrap:wrap}
+    .meta .card-mini{background:rgba(255,255,255,0.02);padding:10px;border-radius:10px;font-size:13px;color:var(--muted)}
+
+    .footer{margin-top:18px;color:var(--muted);font-size:12px}
+
+    /* tiny spinner */
+    .spinner{width:18px;height:18px;border-radius:50%;border:3px solid rgba(255,255,255,0.08);border-top-color:white;animation:spin 0.9s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+
+    /* subtle responsive */
+    @media (max-width:520px){.header{gap:10px}.logo{width:44px;height:44px}.container{gap:12px}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="header">
+      <div class="logo">SF</div>
+      <div>
+        <h1>Spam Filtration — Analyzer</h1>
+        <p class="lead">Paste any message below and get a classification: <strong>spam</strong>, <strong>safe</strong>, or <strong>promotional</strong> with percentages.</p>
+      </div>
+      <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+        <button id="themeToggle" class="btn" title="Toggle light/dark theme" style="padding:8px 10px;font-size:13px">🌙</button>
+      </div>
+    </div>
+
+    <div class="container">
+      <div class="card">
+        <label class="small">Message to analyze</label>
+        <textarea id="inputText" placeholder="Paste message, email body or chat text here..."></textarea>
+
+        <div class="controls">
+          <button id="analyzeBtn" class="btn">Analyze</button>
+          <div id="statusText" class="small" style="display:flex;align-items:center;gap:8px"></div>
+        </div>
+
+        <div class="footer">
+          <div class="meta" style="margin-top:12px">
+            <div class="card-mini">Model: <strong>Groq (your configured model)</strong></div>
+            <div class="card-mini">Confidence normalization: server-side</div>
+            <div class="card-mini">Tip: short messages may yield uncertain confidences</div>
+          </div>
+        </div>
+      </div>
+
+      <aside class="status-card">
+        <div class="card result-card">
+          <div class="result-big">
+            <div>
+              <div class="label" id="mainLabel">—</div>
+              <div class="small" id="subLabel">No analysis yet</div>
+            </div>
+            <div class="badge" id="labelBadge">—</div>
+          </div>
+
+          <div style="margin-top:12px">
+            <div class="small">Spam</div>
+            <div class="progress" aria-hidden>
+              <div id="barSpam" class="bar spam" style="width:0%"></div>
+            </div>
+            <div style="height:12px"></div>
+
+            <div class="small">Safe</div>
+            <div class="progress" aria-hidden>
+              <div id="barSafe" class="bar safe" style="width:0%"></div>
+            </div>
+            <div style="height:12px"></div>
+
+            <div class="small">Promotional</div>
+            <div class="progress" aria-hidden>
+              <div id="barPromo" class="bar promo" style="width:0%"></div>
+            </div>
+          </div>
+
+        </div>
+
+        <div class="card explain" id="explain">Analysis details will appear here after you run the classifier.</div>
+        
+        <!-- History panel -->
+        <div class="card" id="historyCard" style="margin-top:12px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+            <div style="font-weight:700">History</div>
+            <div style="display:flex;gap:8px;align-items:center">
+              <button id="clearHistoryBtn" class="btn" style="background:linear-gradient(90deg,#ef4444,#f97316);padding:6px 10px;font-size:12px">Clear</button>
+              <button id="seedHistoryBtn" class="btn" style="background:linear-gradient(90deg,#6b7280,#9ca3af);padding:6px 10px;font-size:12px">Seed sample</button>
+            </div>
+          </div>
+          <canvas id="historyChart" height="140" style="width:100%;max-width:100%;margin-bottom:10px"></canvas>
+          <div id="historyList" style="max-height:260px;overflow:auto;display:flex;flex-direction:column;gap:8px"></div>
+        </div>
+      </aside>
+    </div>
+  </div>
+
+  <!-- Chart.js (used for a small confidence / label history chart) -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>
+    const analyzeBtn = document.getElementById('analyzeBtn');
+    const inputText = document.getElementById('inputText');
+    const statusText = document.getElementById('statusText');
+    const mainLabel = document.getElementById('mainLabel');
+    const subLabel = document.getElementById('subLabel');
+    const labelBadge = document.getElementById('labelBadge');
+    const explain = document.getElementById('explain');
+
+    const barSpam = document.getElementById('barSpam');
+    const barSafe = document.getElementById('barSafe');
+    const barPromo = document.getElementById('barPromo');
+    const historyList = document.getElementById('historyList');
+    const clearHistoryBtn = document.getElementById('clearHistoryBtn');
+
+    
+    const API_URL = 'http://127.0.0.1:8000/classify';
+    const HISTORY_KEY = 'spamfiltration.history.v1';
+    const MAX_HISTORY = 30;
+    const THEME_KEY = 'spamfiltration.theme.v1';
+    const themeToggleBtn = document.getElementById('themeToggle');
+
+    function setLoading(on){
+      analyzeBtn.disabled = on;
+      statusText.innerHTML = on ? '<span class="spinner" aria-hidden></span><span>Analyzing…</span>' : '';
+    }
+
+    function prettyPercent(n){
+      return (Math.round(n*100)).toFixed(0) + '%';
+    }
+
+    function animateBars(spam, safe, promo){
+      // Values expected between 0 and 1
+      barSpam.style.width = (spam*100) + '%';
+      barSafe.style.width = (safe*100) + '%';
+      barPromo.style.width = (promo*100) + '%';
+    }
+
+    function saveToHistory(entry){
+      try{
+        const raw = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
+        raw.unshift(entry);
+        if(raw.length > MAX_HISTORY) raw.length = MAX_HISTORY;
+        localStorage.setItem(HISTORY_KEY, JSON.stringify(raw));
+        renderHistory();
+      }catch(e){console.warn('history save error', e)}
+    }
+
+    // Chart helpers
+    let historyChartInstance = null;
+    function initHistoryChart(){
+      const ctx = document.getElementById('historyChart');
+      if(!ctx) return null;
+      // create chart instance
+      historyChartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: [],
+          datasets: [
+            { label: 'Spam', backgroundColor: '#ff6b6b', data: [] },
+            { label: 'Safe', backgroundColor: '#7dd3fc', data: [] },
+            { label: 'Promotional', backgroundColor: '#f97316', data: [] },
+          ]
+        },
+        options: {
+          responsive: true,
+          interaction: { mode: 'index' },
+          scales: {
+            x: { stacked: true },
+            y: { stacked: true, beginAtZero: true, max: 1 }
+          },
+          plugins: {
+            legend: { position: 'top' }
+          }
+        }
+      });
+    }
+
+    function updateHistoryChart(history){
+      if(!historyChartInstance) initHistoryChart();
+      if(!historyChartInstance) return;
+      const labels = history.map(h => {
+        const d = new Date(h.timestamp || Date.now());
+        return d.toLocaleTimeString();
+      }).reverse(); // show newest on right side
+      const spamData = history.map(h => (h.confidences?.spam || 0)).reverse();
+      const safeData = history.map(h => (h.confidences?.safe || 0)).reverse();
+      const promoData = history.map(h => (h.confidences?.promotional || h.confidences?.promo || 0)).reverse();
+      historyChartInstance.data.labels = labels;
+      historyChartInstance.data.datasets[0].data = spamData;
+      historyChartInstance.data.datasets[1].data = safeData;
+      historyChartInstance.data.datasets[2].data = promoData;
+      historyChartInstance.update('none');
+    }
+
+    function renderHistory(){
+      try{
+        const raw = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
+        historyList.innerHTML = '';
+        if(raw.length === 0){
+          historyList.innerHTML = '<div class="small" style="color:var(--muted)">No history yet — your last analyses will appear here.</div>';
+          return;
+        }
+        raw.forEach((h, idx)=>{
+          const el = document.createElement('div');
+          el.style.display = 'flex';
+          el.style.flexDirection = 'column';
+          el.style.padding = '8px';
+          el.style.borderRadius = '8px';
+          el.style.background = 'rgba(255,255,255,0.02)';
+          el.style.cursor = 'pointer';
+          el.title = 'Click to load into the input for re-analysis';
+          const label = document.createElement('div');
+          label.style.fontWeight = '700';
+          label.textContent = (h.label || 'unknown').toUpperCase() + ' — ' + (h.text || '').slice(0,65).replace(/\n/g,' ');
+          const meta = document.createElement('div');
+          meta.style.fontSize = '12px';
+          meta.style.color = 'var(--muted)';
+          meta.textContent = new Date(h.timestamp || Date.now()).toLocaleString();
+          el.appendChild(label);
+          el.appendChild(meta);
+          el.addEventListener('click', ()=>{
+            inputText.value = h.text || '';
+          });
+          historyList.appendChild(el);
+        })
+      }catch(e){console.warn('history render error', e)}
+    }
+
+    const seedHistoryBtn = document.getElementById('seedHistoryBtn');
+    clearHistoryBtn.addEventListener('click', ()=>{
+      localStorage.removeItem(HISTORY_KEY);
+      renderHistory();
+    })
+
+    seedHistoryBtn.addEventListener('click', ()=>{
+      const now = Date.now();
+      const sample = [
+        { timestamp: now - 500000, text: 'Special offer just for you: use coupon SAVE25', label: 'promotional', confidences: { spam:0.05, safe:0.05, promotional:0.9 } },
+        { timestamp: now - 420000, text: 'This is urgent, verify your account now', label: 'spam', confidences: { spam:0.95, safe:0.02, promotional:0.03 } },
+        { timestamp: now - 320000, text: 'FYI: scheduled maintenance on Sept 2', label: 'safe', confidences: { spam:0.01, safe:0.98, promotional:0.01 } },
+        { timestamp: now - 200000, text: 'You are eligible to win a prize. Click here to claim', label: 'spam', confidences: { spam:0.92, safe:0.05, promotional:0.03 } },
+        { timestamp: now - 100000, text: 'Hello, your receipt for order #12345', label: 'safe', confidences: { spam:0.01, safe:0.94, promotional:0.05 } }
+      ];
+      try{
+        const existing = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
+        const combined = sample.concat(existing).slice(0, MAX_HISTORY);
+        localStorage.setItem(HISTORY_KEY, JSON.stringify(combined));
+      }catch(e){ console.warn('seed failed', e) }
+      renderHistory();
+    })
+
+    // Theme toggle: remembers selection in localStorage and applies `theme-light` to <html>
+    function applyTheme(theme){
+      if(theme === 'light'){
+        document.documentElement.classList.add('theme-light');
+        if(themeToggleBtn) themeToggleBtn.textContent = '☀️';
+      }else{
+        document.documentElement.classList.remove('theme-light');
+        if(themeToggleBtn) themeToggleBtn.textContent = '🌙';
+      }
+    }
+
+    function initTheme(){
+      try{
+        const stored = localStorage.getItem(THEME_KEY);
+        if(stored){
+          applyTheme(stored);
+          return;
+        }
+        // If no stored preference, fall back to system preference
+        const prefersLight = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches;
+        applyTheme(prefersLight ? 'light' : 'dark');
+      }catch(e){console.warn('theme init failed', e)}
+    }
+
+    if(themeToggleBtn){
+      themeToggleBtn.addEventListener('click', ()=>{
+        const isLight = document.documentElement.classList.contains('theme-light');
+        const next = isLight ? 'dark' : 'light';
+        applyTheme(next);
+        try{ localStorage.setItem(THEME_KEY, next) }catch(e){}
+      })
+      // update chart
+      try{ updateHistoryChart(raw) }catch(e){ console.warn('chart update failed', e) }
+    }
+
+    initTheme();
+
+    analyzeBtn.addEventListener('click', async () => {
+      const text = inputText.value.trim();
+      if(!text){
+        explain.textContent = 'Please paste some text to analyze.';
+        return;
+      }
+
+      setLoading(true);
+      mainLabel.textContent = 'Analyzing...';
+      subLabel.textContent = '';
+      labelBadge.textContent = '—';
+      animateBars(0,0,0);
+      explain.textContent = '';
+
+      try{
+        const res = await fetch(API_URL, {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ text })
+        });
+
+        if(!res.ok){
+          const txt = await res.text();
+          throw new Error('Server error: ' + (txt || res.status));
+        }
+
+        const data = await res.json();
+        // expected: { label: 'spam'|'safe'|'promotional', confidences: {spam:0.9, safe:0.05, promotional:0.05 }, raw_model_output: {...} }
+
+        const label = (data.label || 'unknown').toLowerCase();
+        const c = data.confidences || {};
+        const spam = Number(c.spam) || 0;
+        const safe = Number(c.safe) || 0;
+        const promo = Number(c.promotional || c.promo || 0) || 0;
+
+        // update UI
+        mainLabel.textContent = label === 'unknown' ? 'Unknown' : (label.charAt(0).toUpperCase() + label.slice(1));
+        subLabel.textContent = `Spam: ${prettyPercent(spam)}, Safe: ${prettyPercent(safe)}, Promotional: ${prettyPercent(promo)}`;
+        labelBadge.textContent = mainLabel.textContent;
+
+        explain.textContent = 'Raw model response shown for debugging below. You can remove this in production.';
+        const prettyRaw = JSON.stringify(data.raw_model_output || data, null, 2);
+        explain.innerHTML += '<pre style="white-space:pre-wrap;margin-top:8px;background:rgba(0,0,0,0.12);padding:8px;border-radius:8px;color:#dbeafe;max-height:220px;overflow:auto">' + prettyRaw + '</pre>';
+
+        animateBars(spam, safe, promo);
+
+        // save to history (client-side only)
+        try{
+          saveToHistory({
+            timestamp: Date.now(),
+            text,
+            label,
+            confidences: { spam, safe, promotional: promo },
+            raw: data.raw_model_output || data
+          })
+        }catch(e){console.warn('history write failed', e)}
+
+      }catch(err){
+        explain.textContent = 'Error: ' + (err.message || err);
+        mainLabel.textContent = 'Error';
+        labelBadge.textContent = '—';
+      }finally{
+        setLoading(false);
+      }
+    });
+
+    // small UX: submit on Ctrl+Enter
+    inputText.addEventListener('keydown', (e)=>{
+      if(e.key === 'Enter' && (e.ctrlKey || e.metaKey)){
+        analyzeBtn.click();
+      }
+    });
+
+    // Initial render of history
+    renderHistory();
+  </script>
+</body>
+</html>
